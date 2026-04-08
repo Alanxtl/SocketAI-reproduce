@@ -1,0 +1,4 @@
+- query: suspicious-exec.ql
+- query: suspicious-filesystem.ql
+- query: suspicious-network.ql
+- query: suspicious-download-command.ql

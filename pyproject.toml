@@ -1,0 +1,24 @@
+[project]
+name = "socketai-reproduce"
+version = "0.1.0"
+description = "Reproduction workflow for SocketAI npm malicious package detection"
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "litellm>=1.72.0",
+    "pandas>=2.2.3",
+    "pydantic>=2.11.0",
+    "python-dotenv>=1.0.1",
+    "rich>=14.0.0",
+    "typer>=0.16.0",
+]
+
+[project.scripts]
+socketai-reproduce = "socketai_reproduce.cli:run"
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
