@@ -9,6 +9,15 @@ from urllib.parse import unquote, urlparse
 
 from socketai_reproduce.analysis.models import CodeQLFinding, CodeQLResult
 
+CODEQL_PACK_LOCK = "codeql-pack.lock.yml"
+SMART_QUOTE_CHARS = "\"'`\u201c\u201d\u2018\u2019"
+MISSING_PACK_HINTS = (
+    "pack 'codeql/javascript-all' was not found",
+    "no valid pack solution found",
+    "run 'codeql pack install'",
+    "referenced pack",
+)
+
 
 class CodeQLSetupError(RuntimeError):
     """Raised when the CodeQL environment is unavailable or misconfigured."""
@@ -74,9 +83,21 @@ class CodeQLPrescreener:
             "--threads=0",
         ]
 
-        self._run_command(pack_install_cmd, query_pack_root)
+        command_lines: list[list[str]] = []
+        if should_run_pack_install(query_pack_root):
+            self._run_command(pack_install_cmd, query_pack_root)
+            command_lines.append(pack_install_cmd)
         self._run_command(create_cmd, package_root)
-        self._run_command(analyze_cmd, package_root)
+        command_lines.append(create_cmd)
+        try:
+            self._run_command(analyze_cmd, package_root)
+        except CodeQLExecutionError as exc:
+            if not should_retry_pack_install(exc):
+                raise
+            self._run_command(pack_install_cmd, query_pack_root)
+            command_lines.append(pack_install_cmd)
+            self._run_command(analyze_cmd, package_root)
+        command_lines.append(analyze_cmd)
 
         findings = parse_sarif_findings(sarif_path, package_root)
         candidate_files = sorted({finding.file_path for finding in findings})
@@ -89,7 +110,7 @@ class CodeQLPrescreener:
             codeql_bin=codeql_bin,
             candidate_files=candidate_files,
             findings=findings,
-            command_lines=[pack_install_cmd, create_cmd, analyze_cmd],
+            command_lines=command_lines,
         )
 
     def _run_command(self, command: list[str], cwd: Path) -> None:
@@ -146,7 +167,7 @@ def build_sanitized_codeql_env(base_env: dict[str, str] | None = None) -> dict[s
 
 
 def sanitize_proxy_value(value: str) -> str | None:
-    cleaned = value.strip().strip("\"'`").strip("“”‘’")
+    cleaned = value.strip().strip(SMART_QUOTE_CHARS)
     if not cleaned:
         return None
 
@@ -154,6 +175,15 @@ def sanitize_proxy_value(value: str) -> str | None:
     if parsed.scheme and parsed.hostname:
         return cleaned
     return None
+
+
+def should_run_pack_install(query_pack_root: Path) -> bool:
+    return not (query_pack_root / CODEQL_PACK_LOCK).exists()
+
+
+def should_retry_pack_install(exc: CodeQLExecutionError) -> bool:
+    message = str(exc).lower()
+    return any(hint in message for hint in MISSING_PACK_HINTS)
 
 
 def parse_sarif_findings(sarif_path: Path, package_root: Path) -> list[CodeQLFinding]:

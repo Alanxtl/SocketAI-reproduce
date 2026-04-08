@@ -42,6 +42,8 @@ uv sync
 - `codeql` 已加入系统 `PATH`
 - 设置环境变量 `CODEQL_BIN`
 
+首次运行带 `--use-codeql` 的检测时，程序会在缺少 `codeql-pack.lock.yml` 时自动安装 query pack 依赖；锁文件生成后，后续运行会跳过这一步。
+
 LLM 配置默认从仓库根目录 `.env` 读取，再回退到当前进程环境变量。推荐在仓库根目录创建 `.env`：
 
 ```powershell

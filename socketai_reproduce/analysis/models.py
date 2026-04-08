@@ -9,6 +9,17 @@ def _clamp_score(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
+def _normalize_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return [cleaned] if cleaned else []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
 class UsageStats(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -34,6 +45,11 @@ class InitialFileAssessment(BaseModel):
     def _normalize_scores(cls, value: float) -> float:
         return _clamp_score(value)
 
+    @field_validator("suspicious_behaviors", mode="before")
+    @classmethod
+    def _normalize_suspicious_behaviors(cls, value: Any) -> list[str]:
+        return _normalize_string_list(value)
+
 
 class CriticalFileAssessment(BaseModel):
     label: str
@@ -48,6 +64,11 @@ class CriticalFileAssessment(BaseModel):
     def _normalize_scores(cls, value: float) -> float:
         return _clamp_score(value)
 
+    @field_validator("suspicious_behaviors", "changes_made", mode="before")
+    @classmethod
+    def _normalize_list_fields(cls, value: Any) -> list[str]:
+        return _normalize_string_list(value)
+
 
 class FinalFileAssessment(BaseModel):
     final_label: str
@@ -61,6 +82,16 @@ class FinalFileAssessment(BaseModel):
     @classmethod
     def _normalize_scores(cls, value: float) -> float:
         return _clamp_score(value)
+
+    @field_validator(
+        "evidence",
+        "benign_explanations",
+        "malicious_explanations",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_reason_lists(cls, value: Any) -> list[str]:
+        return _normalize_string_list(value)
 
 
 class StageTrace(BaseModel):
