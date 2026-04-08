@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from socketai_reproduce.analysis.models import CodeQLFinding, CodeQLResult
 
@@ -38,10 +38,21 @@ class CodeQLPrescreener:
                 "Install CodeQL and expose it on PATH or set CODEQL_BIN."
             )
 
+        package_root = package_root.resolve()
+        output_dir = output_dir.resolve()
+        query_suite = self.query_suite.resolve()
+        query_pack_root = resolve_query_pack_root(query_suite)
         output_dir.mkdir(parents=True, exist_ok=True)
-        database_dir = output_dir / "database"
-        sarif_path = output_dir / "results.sarif"
+        database_dir = (output_dir / "database").resolve()
+        sarif_path = (output_dir / "results.sarif").resolve()
 
+        pack_install_cmd = [
+            codeql_bin,
+            "pack",
+            "install",
+            "--",
+            str(query_pack_root),
+        ]
         create_cmd = [
             codeql_bin,
             "database",
@@ -56,13 +67,14 @@ class CodeQLPrescreener:
             "database",
             "analyze",
             str(database_dir),
-            str(self.query_suite),
+            str(query_suite),
             "--format=sarifv2.1.0",
             f"--output={sarif_path}",
             "--rerun",
             "--threads=0",
         ]
 
+        self._run_command(pack_install_cmd, query_pack_root)
         self._run_command(create_cmd, package_root)
         self._run_command(analyze_cmd, package_root)
 
@@ -71,13 +83,13 @@ class CodeQLPrescreener:
         return CodeQLResult(
             enabled=True,
             status="success",
-            query_suite=str(self.query_suite),
+            query_suite=str(query_suite),
             database_path=str(database_dir),
             results_path=str(sarif_path),
             codeql_bin=codeql_bin,
             candidate_files=candidate_files,
             findings=findings,
-            command_lines=[create_cmd, analyze_cmd],
+            command_lines=[pack_install_cmd, create_cmd, analyze_cmd],
         )
 
     def _run_command(self, command: list[str], cwd: Path) -> None:
@@ -87,6 +99,7 @@ class CodeQLPrescreener:
             capture_output=True,
             text=True,
             check=False,
+            env=build_sanitized_codeql_env(),
         )
         if completed.returncode != 0:
             stderr = completed.stderr.strip()
@@ -99,6 +112,48 @@ def resolve_codeql_bin(explicit_path: str | None = None) -> str | None:
     if explicit_path:
         return explicit_path
     return os.getenv("CODEQL_BIN") or shutil.which("codeql")
+
+
+def resolve_query_pack_root(query_suite: Path) -> Path:
+    query_suite = query_suite.resolve()
+    for candidate in (query_suite.parent, *query_suite.parents):
+        if (candidate / "qlpack.yml").exists():
+            return candidate
+    raise CodeQLSetupError(
+        f"Unable to locate qlpack.yml for query suite: {query_suite}"
+    )
+
+
+def build_sanitized_codeql_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(base_env or os.environ)
+    for name in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ):
+        raw_value = env.get(name)
+        if raw_value is None:
+            continue
+        sanitized = sanitize_proxy_value(raw_value)
+        if sanitized is None:
+            env.pop(name, None)
+        else:
+            env[name] = sanitized
+    return env
+
+
+def sanitize_proxy_value(value: str) -> str | None:
+    cleaned = value.strip().strip("\"'`").strip("“”‘’")
+    if not cleaned:
+        return None
+
+    parsed = urlparse(cleaned)
+    if parsed.scheme and parsed.hostname:
+        return cleaned
+    return None
 
 
 def parse_sarif_findings(sarif_path: Path, package_root: Path) -> list[CodeQLFinding]:

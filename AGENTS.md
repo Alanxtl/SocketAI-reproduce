@@ -49,9 +49,9 @@ Python 环境约定：
 
 ```powershell
 uv sync
-.venv\Scripts\socketai-reproduce.exe --help
-.venv\Scripts\socketai-reproduce.exe detect --input <path> --model <model> --no-codeql
-.venv\Scripts\socketai-reproduce.exe batch --manifest <manifest.jsonl> --model <model> --no-codeql
+uv run .\main.py --help
+uv run .\main.py detect --input <path> --model <model> --no-codeql
+uv run .\main.py batch --manifest <manifest.jsonl> --model <model> --no-codeql
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 

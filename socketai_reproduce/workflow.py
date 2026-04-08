@@ -49,6 +49,8 @@ class SocketAIWorkflow:
         self.codeql_prescreener = codeql_prescreener
 
     def detect(self, input_path: Path, output_root: Path) -> RunResult:
+        input_path = input_path.resolve()
+        output_root = output_root.resolve()
         run_id = build_run_id(input_path)
         run_dir = output_root / run_id
         scratch_dir = run_dir / "_tmp"

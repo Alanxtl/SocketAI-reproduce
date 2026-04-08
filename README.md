@@ -56,7 +56,7 @@ OPENAI_BASE_URL=https://your-compatible-endpoint/v1
 安装依赖后可直接使用：
 
 ```powershell
-.venv\Scripts\socketai-reproduce.exe --help
+uv run .\main.py --help
 ```
 
 ### 1. 单包检测
@@ -64,7 +64,7 @@ OPENAI_BASE_URL=https://your-compatible-endpoint/v1
 不开启 CodeQL：
 
 ```powershell
-.venv\Scripts\socketai-reproduce.exe detect `
+uv run .\main.py detect `
   --input .\samples\some-package `
   --model gpt-4o-mini `
   --no-codeql
@@ -73,7 +73,7 @@ OPENAI_BASE_URL=https://your-compatible-endpoint/v1
 启用 CodeQL：
 
 ```powershell
-.venv\Scripts\socketai-reproduce.exe detect `
+uv run .\main.py detect `
   --input .\samples\some-package.tgz `
   --model gpt-4o-mini `
   --use-codeql
@@ -103,7 +103,7 @@ OPENAI_BASE_URL=https://your-compatible-endpoint/v1
 运行方式：
 
 ```powershell
-.venv\Scripts\socketai-reproduce.exe batch `
+uv run .\main.py batch `
   --manifest .\manifest.jsonl `
   --model gpt-4o-mini `
   --output-dir .\result\batches `
