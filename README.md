@@ -1,69 +1,69 @@
 # SocketAI-reproduce
 
-`socketai-reproduce` 是对 ICSE 2025 论文 *Leveraging Large Language Models to Detect NPM Malicious Packages* 的工程化复现。当前版本实现了一条可运行的 npm 包检测 workflow：
+`socketai-reproduce` is an engineering-oriented reproduction of the ICSE 2025 paper *Leveraging Large Language Models to Detect NPM Malicious Packages*. The current version implements a runnable npm package detection workflow:
 
-- 输入本地 npm 包目录或 `.tgz/.tar/.zip` 归档
-- 可选使用真实 `CodeQL` 做静态预筛
-- 对候选文件运行三阶段 LLM 分析
-- 输出包级恶意判定
-- 保留每一步 prompt、raw response、解析结果、token 与耗时，便于 debug 和科研统计
+- Accept a local npm package directory or a `.tgz/.tar/.zip` archive as input
+- Optionally use real `CodeQL` for static prescreening
+- Run three-stage LLM analysis on candidate files
+- Output a package-level maliciousness verdict
+- Preserve the prompt, raw response, parsed result, token usage, and latency for every step to support debugging and research statistics
 
-## 项目结构
+## Project Structure
 
 ```text
 socketai_reproduce/
   cli.py                  # detect / batch CLI
-  workflow.py             # 端到端编排
-  package_loader.py       # 目录/归档输入处理
-  analysis/models.py      # 结构化数据模型
+  workflow.py             # End-to-end orchestration
+  package_loader.py       # Directory/archive input handling
+  analysis/models.py      # Structured data models
   llm/
-    client.py             # LiteLLM 适配
-    prompts.py            # 三阶段 prompt
+    client.py             # LiteLLM adapter
+    prompts.py            # Three-stage prompts
   prescreener/
-    codeql.py             # CodeQL 预筛与 SARIF 解析
-  reporting/exporters.py  # JSON/JSONL/CSV 导出
-  codeql_queries/         # 仓库内置 CodeQL query pack
+    codeql.py             # CodeQL prescreening and SARIF parsing
+  reporting/exporters.py  # JSON/JSONL/CSV exports
+  codeql_queries/         # Built-in CodeQL query pack
 utils/
-  find_archives.py        # 归档解压与危险文件枚举辅助
+  find_archives.py        # Archive extraction and risky file enumeration helpers
 tests/
-  ...                     # 最小单元测试与 smoke test
+  ...                     # Minimal unit tests and smoke tests
 ```
 
-## 环境准备
+## Environment Setup
 
-仓库默认使用本地 `.venv`。
+The repository uses the local `.venv` by default.
 
 ```powershell
 uv sync
 ```
 
-如果需要真实 CodeQL 预筛，请额外安装 CodeQL CLI，并满足以下任一条件：
+If you want to use real CodeQL prescreening, install the CodeQL CLI and satisfy either of the following:
 
-- `codeql` 已加入系统 `PATH`
-- 设置环境变量 `CODEQL_BIN`
+- `codeql` is available in the system `PATH`
+- Set the `CODEQL_BIN` environment variable
 
-首次运行带 `--use-codeql` 的检测时，程序会在缺少 `codeql-pack.lock.yml` 时自动安装 query pack 依赖；锁文件生成后，后续运行会跳过这一步。
+When you run detection with `--use-codeql` for the first time, the program will automatically install the query pack dependencies if `codeql-pack.lock.yml` is missing. Once the lock file has been generated, later runs will skip that step.
 
-LLM 配置默认从仓库根目录 `.env` 读取，再回退到当前进程环境变量。推荐在仓库根目录创建 `.env`：
+LLM configuration is read from the repository root `.env` by default, and then falls back to the current process environment variables. It is recommended to create a `.env` file in the repository root:
 
 ```powershell
 OPENAI_API_KEY=your-key
 OPENAI_BASE_URL=https://your-compatible-endpoint/v1
 ```
 
-如果你更习惯临时设置环境变量，现有方式仍然可用；`.env` 不会覆盖已经存在的系统环境变量。
+If you prefer setting environment variables temporarily, that still works. The `.env` file will not override existing system environment variables.
 
-## CLI 用法
+## CLI Usage
 
-安装依赖后可直接使用：
+After installing dependencies, you can use:
 
 ```powershell
 uv run .\main.py --help
 ```
 
-### 1. 单包检测
+### 1. Single-Package Detection
 
-不开启 CodeQL：
+Without CodeQL:
 
 ```powershell
 uv run .\main.py detect `
@@ -72,7 +72,7 @@ uv run .\main.py detect `
   --no-codeql
 ```
 
-启用 CodeQL：
+With CodeQL:
 
 ```powershell
 uv run .\main.py detect `
@@ -81,28 +81,28 @@ uv run .\main.py detect `
   --use-codeql
 ```
 
-常用参数：
+Common arguments:
 
-- `--input`: 本地目录或 npm 归档
-- `--model`: LiteLLM 使用的模型名
-- `--output-dir`: 检测结果根目录，默认 `result/runs`
-- `--threshold`: 包级聚合阈值，默认 `0.5`
-- `--temperature`: LLM 温度，默认 `0`
-- `--use-codeql / --no-codeql`: 是否启用 CodeQL 预筛
-- `--codeql-bin`: 显式指定 CodeQL 可执行文件
+- `--input`: Local directory or npm archive
+- `--model`: Model name used by LiteLLM
+- `--output-dir`: Root directory for detection results, default `result/runs`
+- `--threshold`: Package-level aggregation threshold, default `0.5`
+- `--temperature`: LLM temperature, default `0`
+- `--use-codeql / --no-codeql`: Whether to enable CodeQL prescreening
+- `--codeql-bin`: Explicitly specify the CodeQL executable
 
-### 2. 批量检测
+### 2. Batch Detection
 
-支持 `jsonl` 或 `csv` manifest，至少包含 `input` 字段。
+Supports a `jsonl` or `csv` manifest with at least an `input` field.
 
-`manifest.jsonl` 示例：
+Example `manifest.jsonl`:
 
 ```json
 {"input": "D:/datasets/pkg_a"}
 {"input": "D:/datasets/pkg_b.tgz"}
 ```
 
-运行方式：
+Run:
 
 ```powershell
 uv run .\main.py batch `
@@ -112,11 +112,11 @@ uv run .\main.py batch `
   --no-codeql
 ```
 
-`batch` 遇到单样本 `CodeQL` 环境错误时不会整体中止，而是把该样本标记为 `setup_error` 后继续。
+If `batch` encounters a CodeQL environment error for a single sample, it does not stop the whole batch. Instead, that sample is marked as `setup_error` and execution continues.
 
-## 输出目录
+## Output Directory
 
-单次 `detect` 默认输出到 `result/runs/<run_id>/`：
+A single `detect` run outputs to `result/runs/<run_id>/` by default:
 
 ```text
 run_meta.json
@@ -131,7 +131,7 @@ stages/<file_id>/stage2.json
 stages/<file_id>/stage3.json
 ```
 
-各阶段 JSON 都会保留：
+Each stage JSON preserves:
 
 - `prompt_text`
 - `prompt_context`
@@ -142,41 +142,38 @@ stages/<file_id>/stage3.json
 - `retry_count`
 - `status`
 
-`batch` 额外在批次目录下导出聚合版 `exports/package_level.csv` 与 `exports/file_level.csv`，便于后续画图。
+`batch` additionally exports aggregated `exports/package_level.csv` and `exports/file_level.csv` under the batch directory for downstream plotting.
 
-## 工作流说明
+## Workflow Overview
 
-当前实现采用“论文风格、工程上可调试”的固定流程：
+1. Input preparation: parse the package root, read `package.json`, and identify risky script files and install lifecycle scripts.
+2. CodeQL prescreening: if enabled, run the built-in query suite to obtain candidate files and matched rules.
+3. Three-stage LLM analysis:
+   - Stage 1: Initial maliciousness assessment
+   - Stage 2: Self-review and correction
+   - Stage 3: Final file-level verdict
+4. Package-level aggregation: if any file has `final_score >= threshold`, the package is classified as `malicious`.
 
-1. 输入准备：解析包根目录、读取 `package.json`、识别危险脚本文件与 install 生命周期脚本。
-2. CodeQL 预筛：若启用，则运行仓库内置 query suite，得到候选文件集合与规则命中。
-3. 三阶段 LLM 分析：
-   - Stage 1：初始恶意评估
-   - Stage 2：自我复核与修正
-   - Stage 3：最终文件级判定
-4. 包级聚合：若任一文件 `final_score >= threshold`，则该包判为 `malicious`。
+## Validation
 
-## 验证
-
-已提供最小测试集：
+A minimal test suite is provided:
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-覆盖内容包括：
+Coverage includes:
 
-- 目录输入与归档输入解析
-- install 生命周期脚本提取
-- CodeQL 缺失时的 setup error
-- SARIF 结果到文件路径的映射
-- LLM 非法 JSON 重试
-- 包级阈值聚合
-- batch 模式下单样本失败不整体中止
+- Directory and archive input parsing
+- Install lifecycle script extraction
+- Setup errors when CodeQL is missing
+- Mapping SARIF results to file paths
+- Retry logic for invalid LLM JSON
+- Package-level threshold aggregation
+- Batch mode continuing when a single sample fails
 
-## 当前复现边界
+## Current Reproduction Scope
 
-- 当前版本优先复现“流程结构、调试产物和实验数据导出”，不是论文全部 benchmark 的逐项复刻
-- LLM 后端使用 LiteLLM 封装的 OpenAI 兼容接口
-- 默认不从 npm registry 自动下载包，只接受本地目录或归档
-- CodeQL 查询集是仓库内置的轻量可扩展版本，便于后续迭代逼近论文实验设置
+- The LLM backend uses a LiteLLM-wrapped OpenAI-compatible API
+- Packages are not automatically downloaded from the npm registry by default; only local directories or archives are accepted
+- The CodeQL query set is a lightweight, extensible built-in version that supports iterative refinement toward the paper's experimental setup
