@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from socketai_reproduce.package_loader import load_package
+from utils.find_archives import extract_archive_raw
 
 
 class PackageLoaderTests(unittest.TestCase):
@@ -64,6 +65,28 @@ class PackageLoaderTests(unittest.TestCase):
             self.assertTrue(loaded.is_archive)
             self.assertEqual(loaded.package_name, "archive-demo")
             self.assertTrue((loaded.package_root / "package.json").exists())
+
+    def test_extract_archive_raw_uses_compact_output_directory_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            package_dir = root / "package"
+            package_dir.mkdir(parents=True)
+            (package_dir / "package.json").write_text(
+                json.dumps({"name": "archive-demo", "version": "2.0.0"}),
+                encoding="utf-8",
+            )
+
+            archive_name = (
+                "2024-09-03-videoads-util-capability-detection-v1.0.3-with-an-even-longer-tail-for-testing.tgz"
+            )
+            archive_path = Path(tmp) / archive_name
+            with tarfile.open(archive_path, "w:gz") as archive:
+                archive.add(package_dir, arcname="package")
+
+            extracted = extract_archive_raw(archive_path, Path(tmp) / "scratch")
+
+            self.assertTrue(extracted.exists())
+            self.assertLessEqual(len(extracted.name), 31)
 
 
 if __name__ == "__main__":

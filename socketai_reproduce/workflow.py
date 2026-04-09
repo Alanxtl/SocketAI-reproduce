@@ -21,7 +21,12 @@ from socketai_reproduce.analysis.models import (
     StageTrace,
     UsageStats,
 )
-from socketai_reproduce.config import WorkflowConfig, build_run_id, utc_now_iso
+from socketai_reproduce.config import (
+    WorkflowConfig,
+    build_run_id,
+    build_scratch_dir_name,
+    utc_now_iso,
+)
 from socketai_reproduce.llm.client import LLMClient
 from socketai_reproduce.llm.prompts import (
     PromptBundle,
@@ -53,11 +58,11 @@ class SocketAIWorkflow:
         output_root = output_root.resolve()
         run_id = build_run_id(input_path)
         run_dir = output_root / run_id
-        scratch_dir = run_dir / "_tmp"
+        scratch_dir = self.config.scratch_output_dir.resolve() / build_scratch_dir_name(run_id)
 
         started_at = time.perf_counter()
         loaded_package = load_package(input_path, scratch_dir)
-        codeql_result = self._run_codeql(loaded_package, run_dir)
+        codeql_result = self._run_codeql(loaded_package, run_dir, scratch_dir)
         selected_files, codeql_map = self._select_files(loaded_package, codeql_result)
         findings_by_file = group_findings_by_file(codeql_result)
 
@@ -114,12 +119,21 @@ class SocketAIWorkflow:
         export_run_result(run_result, run_dir)
         return run_result
 
-    def _run_codeql(self, loaded_package: LoadedPackage, run_dir: Path) -> CodeQLResult:
+    def _run_codeql(
+        self,
+        loaded_package: LoadedPackage,
+        run_dir: Path,
+        scratch_dir: Path,
+    ) -> CodeQLResult:
         if not self.config.use_codeql:
             return CodeQLResult(enabled=False, status="disabled")
         if self.codeql_prescreener is None:
             raise RuntimeError("CodeQL was enabled, but no CodeQL prescreener was configured.")
-        return self.codeql_prescreener.screen(loaded_package.package_root, run_dir / "codeql")
+        return self.codeql_prescreener.screen(
+            loaded_package.package_root,
+            run_dir / "codeql",
+            database_root=scratch_dir / "codeql-db",
+        )
 
     def _select_files(
         self,

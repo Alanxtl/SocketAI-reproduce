@@ -114,6 +114,8 @@ uv run .\main.py batch `
 
 If `batch` encounters a CodeQL environment error for a single sample, it does not stop the whole batch. Instead, that sample is marked as `setup_error` and execution continues.
 
+Batch-level checkpoint files are updated after each completed sample. If the process is interrupted midway, the already-finished per-run outputs remain available under `runs/`, and the batch-level `batch_meta.json`, `exports/package_level.csv`, and `exports/file_level.csv` preserve progress up to the last completed sample.
+
 ## Output Directory
 
 A single `detect` run outputs to `result/runs/<run_id>/` by default:
@@ -143,6 +145,8 @@ Each stage JSON preserves:
 - `status`
 
 `batch` additionally exports aggregated `exports/package_level.csv` and `exports/file_level.csv` under the batch directory for downstream plotting.
+
+To reduce Windows path-length failures, archive extraction workspaces and temporary CodeQL databases are created under `result/_scratch/<short_id>/` instead of nested under each batch run directory. The exported debug artifacts remain under the corresponding `result/runs/<run_id>/` or batch output directory.
 
 ## Workflow Overview
 

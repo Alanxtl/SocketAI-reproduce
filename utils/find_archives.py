@@ -5,6 +5,8 @@ import tarfile
 from typing import Any, Dict, Iterable, List, Optional
 import zipfile
 
+from socketai_reproduce.config import compact_path_label
+
 ARCHIVE_EXTS = (".tgz", ".tar.gz", ".tar", ".zip")
 
 
@@ -52,7 +54,8 @@ def safe_extract_zip(zip_path: Path, dest: Path, pwd: str = "infected"):
 
 
 def extract_archive_raw(archive_path: Path, tmpdir: Path) -> Path:
-    outdir = tmpdir / (archive_path.stem + "_" + sha1_short(archive_path))
+    archive_label = compact_path_label(archive_path.stem, max_length=20, default="archive")
+    outdir = tmpdir / f"{archive_label}_{sha1_short(archive_path)}"
     outdir.mkdir(parents=True, exist_ok=True)
     if archive_path.suffix.lower() == ".zip" or archive_path.name.lower().endswith(
         ".zip"

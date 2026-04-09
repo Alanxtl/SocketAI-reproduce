@@ -7,6 +7,42 @@ from typing import Any
 
 from socketai_reproduce.analysis.models import FileAnalysisResult, RunResult
 
+PACKAGE_LEVEL_FIELDNAMES = [
+    "run_id",
+    "input_path",
+    "package_name",
+    "package_version",
+    "label",
+    "status",
+    "error_type",
+    "threshold",
+    "max_file_score",
+    "flagged_file_count",
+    "top_k_suspicious_files",
+    "decision_reason",
+    "total_files",
+    "analyzed_files",
+    "model",
+    "provider",
+    "use_codeql",
+]
+
+FILE_LEVEL_FIELDNAMES = [
+    "run_id",
+    "package_name",
+    "relative_path",
+    "from_codeql",
+    "codeql_rules",
+    "final_label",
+    "final_score",
+    "confidence",
+    "status",
+    "error_message",
+    "stage1_status",
+    "stage2_status",
+    "stage3_status",
+]
+
 
 def export_run_result(run_result: RunResult, run_dir: Path) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -37,6 +73,7 @@ def export_batch_results(
     batch_id: str,
     manifest_path: Path,
     run_results: list[RunResult],
+    total_packages: int | None = None,
 ) -> None:
     batch_dir.mkdir(parents=True, exist_ok=True)
     package_rows = [_package_level_row(result) for result in run_results]
@@ -50,12 +87,73 @@ def export_batch_results(
         {
             "batch_id": batch_id,
             "manifest_path": str(manifest_path),
-            "packages": len(package_rows),
-            "files": len(file_rows),
+            "status": "completed",
+            "packages_total": total_packages if total_packages is not None else len(package_rows),
+            "packages_completed": len(package_rows),
+            "files_exported": len(file_rows),
         },
     )
     write_csv(batch_dir / "exports" / "package_level.csv", package_rows)
     write_csv(batch_dir / "exports" / "file_level.csv", file_rows)
+
+
+def initialize_batch_results(
+    batch_dir: Path,
+    *,
+    batch_id: str,
+    manifest_path: Path,
+    total_packages: int,
+) -> None:
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    ensure_csv_header(batch_dir / "exports" / "package_level.csv", PACKAGE_LEVEL_FIELDNAMES)
+    ensure_csv_header(batch_dir / "exports" / "file_level.csv", FILE_LEVEL_FIELDNAMES)
+    write_json(
+        batch_dir / "batch_meta.json",
+        {
+            "batch_id": batch_id,
+            "manifest_path": str(manifest_path),
+            "status": "running",
+            "packages_total": total_packages,
+            "packages_completed": 0,
+            "files_exported": 0,
+        },
+    )
+
+
+def checkpoint_batch_result(
+    batch_dir: Path,
+    *,
+    batch_id: str,
+    manifest_path: Path,
+    run_result: RunResult,
+    total_packages: int,
+    completed_packages: int,
+    exported_files: int,
+) -> None:
+    package_row = _package_level_row(run_result)
+    file_rows = [_file_level_row(run_result, file_result) for file_result in run_result.files]
+    append_csv_rows(
+        batch_dir / "exports" / "package_level.csv",
+        [package_row],
+        PACKAGE_LEVEL_FIELDNAMES,
+    )
+    append_csv_rows(
+        batch_dir / "exports" / "file_level.csv",
+        file_rows,
+        FILE_LEVEL_FIELDNAMES,
+    )
+    write_json(
+        batch_dir / "batch_meta.json",
+        {
+            "batch_id": batch_id,
+            "manifest_path": str(manifest_path),
+            "status": "running",
+            "packages_total": total_packages,
+            "packages_completed": completed_packages,
+            "files_exported": exported_files,
+            "last_completed_run_id": run_result.run_meta.run_id,
+        },
+    )
 
 
 def write_stage_traces(run_dir: Path, file_result: FileAnalysisResult) -> None:
@@ -86,6 +184,28 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
+        writer.writerows(rows)
+
+
+def ensure_csv_header(path: Path, fieldnames: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.stat().st_size > 0:
+        return
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+
+
+def append_csv_rows(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
+    if not rows:
+        ensure_csv_header(path, fieldnames)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    needs_header = not path.exists() or path.stat().st_size == 0
+    with path.open("a", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        if needs_header:
+            writer.writeheader()
         writer.writerows(rows)
 
 

@@ -39,7 +39,13 @@ class CodeQLPrescreener:
             Path(__file__).resolve().parent.parent / "codeql_queries" / "socketai-javascript.qls"
         )
 
-    def screen(self, package_root: Path, output_dir: Path) -> CodeQLResult:
+    def screen(
+        self,
+        package_root: Path,
+        output_dir: Path,
+        *,
+        database_root: Path | None = None,
+    ) -> CodeQLResult:
         codeql_bin = resolve_codeql_bin(self.codeql_bin)
         if codeql_bin is None:
             raise CodeQLSetupError(
@@ -52,7 +58,8 @@ class CodeQLPrescreener:
         query_suite = self.query_suite.resolve()
         query_pack_root = resolve_query_pack_root(query_suite)
         output_dir.mkdir(parents=True, exist_ok=True)
-        database_dir = (output_dir / "database").resolve()
+        database_dir = (database_root or (output_dir / "database")).resolve()
+        database_dir.parent.mkdir(parents=True, exist_ok=True)
         sarif_path = (output_dir / "results.sarif").resolve()
 
         pack_install_cmd = [

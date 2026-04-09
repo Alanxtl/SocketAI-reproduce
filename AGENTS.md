@@ -28,6 +28,7 @@ This file provides constraints and context for coding agents working in this rep
 - If external behavior changes, `README.md` must be updated at the same time.
 - If you add workflow stages, exported files, configuration items, or experiment entry points, also update `README.md`.
 - Prefer keeping intermediate results. Do not delete debug data that helps reproduction just for cleanliness.
+- Batch exports are checkpointed incrementally. Preserve that behavior unless there is a strong reason to change it.
 
 ## Code Navigation Suggestions
 

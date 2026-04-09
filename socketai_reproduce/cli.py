@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import csv
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import typer
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from socketai_reproduce.config import (
     DEFAULT_BATCHES_DIR,
@@ -14,6 +17,7 @@ from socketai_reproduce.config import (
     DEFAULT_TEMPERATURE,
     DEFAULT_THRESHOLD,
     WorkflowConfig,
+    build_batch_id,
     build_run_id,
 )
 from socketai_reproduce.env import load_project_dotenv
@@ -23,7 +27,12 @@ from socketai_reproduce.prescreener import (
     CodeQLPrescreener,
     CodeQLSetupError,
 )
-from socketai_reproduce.reporting.exporters import export_batch_results, export_run_result
+from socketai_reproduce.reporting.exporters import (
+    checkpoint_batch_result,
+    export_batch_results,
+    export_run_result,
+    initialize_batch_results,
+)
 from socketai_reproduce.workflow import SocketAIWorkflow, build_error_run_result
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -50,7 +59,7 @@ def detect(
     )
     try:
         result = workflow.detect(input_path, output_dir)
-    except (CodeQLExecutionError, CodeQLSetupError, RuntimeError, ValueError) as exc:
+    except (CodeQLExecutionError, CodeQLSetupError, RuntimeError, ValueError, OSError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
 
@@ -88,51 +97,75 @@ def batch(
         codeql_bin=codeql_bin,
     )
     entries = load_manifest_entries(manifest)
-    batch_id = f"batch-{build_run_id(manifest)}"
+    batch_id = build_batch_id(manifest)
     batch_dir = output_dir / batch_id
     run_results = []
+    exported_files = 0
+    initialize_batch_results(
+        batch_dir,
+        batch_id=batch_id,
+        manifest_path=manifest,
+        total_packages=len(entries),
+    )
+    with create_batch_progress() as progress:
+        task_id = progress.add_task("Batch analysis", total=len(entries))
+        for entry in entries:
+            sample_input = Path(entry["input"]).resolve()
+            progress.update(task_id, description=build_batch_progress_description(sample_input))
 
-    for entry in entries:
-        sample_input = Path(entry["input"]).resolve()
-        run_id = build_run_id(sample_input)
-        run_dir = batch_dir / "runs" / run_id
-        try:
-            result = workflow.detect(sample_input, batch_dir / "runs")
-        except CodeQLSetupError as exc:
-            result = build_error_run_result(
-                run_id=run_id,
-                input_path=sample_input,
-                run_dir=run_dir,
-                model=model,
-                provider=provider,
-                threshold=threshold,
-                use_codeql=use_codeql,
-                status="setup_error",
-                error_type="codeql_setup_error",
-                error_message=str(exc),
+            run_id = build_run_id(sample_input)
+            run_dir = batch_dir / "runs" / run_id
+            try:
+                result = workflow.detect(sample_input, batch_dir / "runs")
+            except CodeQLSetupError as exc:
+                result = build_error_run_result(
+                    run_id=run_id,
+                    input_path=sample_input,
+                    run_dir=run_dir,
+                    model=model,
+                    provider=provider,
+                    threshold=threshold,
+                    use_codeql=use_codeql,
+                    status="setup_error",
+                    error_type="codeql_setup_error",
+                    error_message=str(exc),
+                )
+                export_run_result(result, run_dir)
+            except (CodeQLExecutionError, RuntimeError, ValueError, OSError) as exc:
+                result = build_error_run_result(
+                    run_id=run_id,
+                    input_path=sample_input,
+                    run_dir=run_dir,
+                    model=model,
+                    provider=provider,
+                    threshold=threshold,
+                    use_codeql=use_codeql,
+                    status="error",
+                    error_type="workflow_error",
+                    error_message=str(exc),
+                )
+                export_run_result(result, run_dir)
+            run_results.append(result)
+            exported_files += len(result.files)
+            checkpoint_batch_result(
+                batch_dir,
+                batch_id=batch_id,
+                manifest_path=manifest,
+                run_result=result,
+                total_packages=len(entries),
+                completed_packages=len(run_results),
+                exported_files=exported_files,
             )
-            export_run_result(result, run_dir)
-        except (CodeQLExecutionError, RuntimeError, ValueError) as exc:
-            result = build_error_run_result(
-                run_id=run_id,
-                input_path=sample_input,
-                run_dir=run_dir,
-                model=model,
-                provider=provider,
-                threshold=threshold,
-                use_codeql=use_codeql,
-                status="error",
-                error_type="workflow_error",
-                error_message=str(exc),
-            )
-            export_run_result(result, run_dir)
-        run_results.append(result)
+            progress.advance(task_id)
+
+        progress.update(task_id, description="Batch analysis complete")
 
     export_batch_results(
         batch_dir,
         batch_id=batch_id,
         manifest_path=manifest,
         run_results=run_results,
+        total_packages=len(entries),
     )
     typer.echo(
         json.dumps(
@@ -185,12 +218,12 @@ def build_workflow(
 def load_manifest_entries(manifest_path: Path) -> list[dict[str, Any]]:
     if manifest_path.suffix.lower() == ".jsonl":
         rows = []
-        for line in manifest_path.read_text(encoding="utf-8").splitlines():
+        for line in manifest_path.read_text(encoding="utf-8-sig").splitlines():
             if line.strip():
                 rows.append(json.loads(line))
         return _validate_manifest_rows(rows)
     if manifest_path.suffix.lower() == ".csv":
-        with manifest_path.open("r", encoding="utf-8", newline="") as handle:
+        with manifest_path.open("r", encoding="utf-8-sig", newline="") as handle:
             return _validate_manifest_rows(list(csv.DictReader(handle)))
     raise ValueError("Manifest must be JSONL or CSV and include an 'input' column.")
 
@@ -204,3 +237,23 @@ def _validate_manifest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if "input" not in row or not str(row["input"]).strip():
             raise ValueError(f"Manifest row {index} is missing a non-empty 'input' field.")
     return rows
+
+
+def create_batch_progress() -> Progress:
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        console=Console(stderr=True),
+        transient=False,
+        disable=not sys.stderr.isatty(),
+    )
+
+
+def build_batch_progress_description(sample_input: Path, max_length: int = 60) -> str:
+    display_name = sample_input.name
+    if len(display_name) > max_length:
+        display_name = display_name[: max_length - 3] + "..."
+    return f"Analyzing {display_name}"

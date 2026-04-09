@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from socketai_reproduce.config import compact_path_label
 from utils.find_archives import ARCHIVE_EXTS, extract_archive, iter_dangerous_files
 
 LIFECYCLE_SCRIPT_NAMES = ("preinstall", "install", "postinstall")
@@ -56,7 +57,7 @@ class LoadedPackage:
 
     def build_file_id(self, path: Path) -> str:
         digest = hashlib.sha1(self.relative_path(path).encode("utf-8")).hexdigest()[:12]
-        stem = path.stem or "file"
+        stem = compact_path_label(path.stem or "file", max_length=20, default="file")
         return f"{stem}-{digest}"
 
 

