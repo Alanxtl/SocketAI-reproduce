@@ -116,6 +116,35 @@ If `batch` encounters a CodeQL environment error for a single sample, it does no
 
 Batch-level checkpoint files are updated after each completed sample. If the process is interrupted midway, the already-finished per-run outputs remain available under `runs/`, and the batch-level `batch_meta.json`, `exports/package_level.csv`, and `exports/file_level.csv` preserve progress up to the last completed sample.
 
+## Visualization
+
+You can generate publication-style batch figures from an existing checkpoint:
+
+```powershell
+uv run .\scripts\plot_batch_results.py `
+  --batch-dir .\result\batches\<batch_id>
+```
+
+The script writes to `result/figures/<batch_id>/` by default and currently exports:
+
+- `batch_overview.pdf` / `batch_overview.png`
+- `batch_focus_metrics.pdf` / `batch_focus_metrics.png`
+- `batch_overview_summary.json`
+- `top_suspicious_packages.csv`
+
+If you want true package-level accuracy metrics, provide a ground-truth label file:
+
+```powershell
+uv run .\scripts\plot_batch_results.py `
+  --batch-dir .\result\batches\<batch_id> `
+  --labels .\labels.csv
+```
+
+Supported ground-truth formats:
+
+- Flat labels: `input` plus one of `label`, `ground_truth`, or `gt`
+- SocketAI-style annotations: `archive_name`, `bin_label`, and `annotation.verdict`
+
 ## Output Directory
 
 A single `detect` run outputs to `result/runs/<run_id>/` by default:

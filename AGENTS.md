@@ -17,6 +17,7 @@ This file provides constraints and context for coding agents working in this rep
 - `socketai_reproduce/prescreener/codeql.py`: CodeQL prescreening and SARIF parsing
 - `socketai_reproduce/reporting/exporters.py`: JSON/JSONL/CSV export logic
 - `socketai_reproduce/codeql_queries/`: built-in CodeQL query pack
+- `scripts/plot_batch_results.py`: publication-style visualization for batch checkpoints
 - `utils/find_archives.py`: existing helpers for archive extraction and risky file traversal
 - `tests/`: minimal unit tests and smoke tests
 - `result/`: runtime artifact output directory, not tracked by version control by default
@@ -53,6 +54,7 @@ uv sync
 uv run .\main.py --help
 uv run .\main.py detect --input <path> --model <model> --no-codeql
 uv run .\main.py batch --manifest <manifest.jsonl> --model <model> --no-codeql
+uv run .\scripts\plot_batch_results.py --batch-dir <result/batches/batch_id>
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
