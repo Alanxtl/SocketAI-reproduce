@@ -1,6 +1,10 @@
 # SocketAI-reproduce
 
-`socketai-reproduce` is an engineering-oriented reproduction of the ICSE 2025 paper *Leveraging Large Language Models to Detect NPM Malicious Packages*. The current version implements a runnable npm package detection workflow:
+`socketai-reproduce` is an engineering-oriented reproduction of:
+
+> Leveraging Large Language Models to Detect NPM Malicious Packages
+
+The current version implements a runnable npm package detection workflow:
 
 - Accept a local npm package directory or a `.tgz/.tar/.zip` archive as input
 - Optionally use real `CodeQL` for static prescreening
@@ -234,7 +238,7 @@ To reduce Windows path-length failures, archive extraction workspaces and tempor
 A minimal test suite is provided:
 
 ```powershell
-.venv\Scripts\python.exe -m unittest discover -s tests -v
+uv run python -m unittest discover -s tests -v
 ```
 
 Coverage includes:
