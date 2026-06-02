@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import sys
 from collections import Counter
 from contextlib import redirect_stdout
@@ -16,15 +17,180 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import PercentFormatter
 import pandas as pd
+import seaborn as sns
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SKILL_ROOT = REPO_ROOT / ".agents" / "skills" / "scientific-visualization"
-sys.path.insert(0, str(SKILL_ROOT / "scripts"))
-sys.path.insert(0, str(SKILL_ROOT / "assets"))
 
-from color_palettes import OKABE_ITO_LIST  # type: ignore  # noqa: E402
-from figure_export import save_publication_figure  # type: ignore  # noqa: E402
-from style_presets import apply_publication_style  # type: ignore  # noqa: E402
+
+def _iter_visualization_skill_roots() -> list[Path]:
+    candidates: list[Path] = [
+        REPO_ROOT / ".agents" / "skills" / "scientific-visualization",
+        Path.home() / ".codex" / "skills" / "scientific-visualization",
+    ]
+    if codex_home := os.environ.get("CODEX_HOME"):
+        candidates.insert(0, Path(codex_home) / "skills" / "scientific-visualization")
+
+    unique_candidates: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve(strict=False)
+        if resolved not in seen:
+            unique_candidates.append(resolved)
+            seen.add(resolved)
+    return unique_candidates
+
+
+def _register_visualization_skill_paths() -> None:
+    for skill_root in _iter_visualization_skill_roots():
+        scripts_dir = skill_root / "scripts"
+        assets_dir = skill_root / "assets"
+        if not scripts_dir.exists() or not assets_dir.exists():
+            continue
+        sys.path.insert(0, str(scripts_dir))
+        sys.path.insert(0, str(assets_dir))
+        return
+
+
+_register_visualization_skill_paths()
+
+try:
+    from color_palettes import OKABE_ITO_LIST  # type: ignore  # noqa: E402
+    from figure_export import save_publication_figure  # type: ignore  # noqa: E402
+    from style_presets import apply_publication_style  # type: ignore  # noqa: E402
+except ModuleNotFoundError:
+    # Keep the plotting script runnable even when Codex skill helpers are not installed.
+    OKABE_ITO_LIST = [
+        "#E69F00",
+        "#56B4E9",
+        "#009E73",
+        "#F0E442",
+        "#0072B2",
+        "#D55E00",
+        "#CC79A7",
+        "#000000",
+    ]
+
+    def apply_publication_style(style_name: str = "default") -> None:
+        style = {
+            "figure.dpi": 100,
+            "figure.facecolor": "white",
+            "figure.autolayout": False,
+            "figure.constrained_layout.use": True,
+            "font.size": 8,
+            "font.family": "serif",
+            "font.serif": ["Times New Roman", "Times", "Nimbus Roman", "DejaVu Serif"],
+            "axes.linewidth": 0.5,
+            "axes.labelsize": 9,
+            "axes.titlesize": 9,
+            "axes.labelweight": "normal",
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.spines.left": True,
+            "axes.spines.bottom": True,
+            "axes.edgecolor": "black",
+            "axes.labelcolor": "black",
+            "axes.axisbelow": True,
+            "axes.grid": False,
+            "xtick.major.size": 3,
+            "xtick.minor.size": 2,
+            "xtick.major.width": 0.5,
+            "xtick.minor.width": 0.5,
+            "xtick.labelsize": 7,
+            "xtick.direction": "out",
+            "ytick.major.size": 3,
+            "ytick.minor.size": 2,
+            "ytick.major.width": 0.5,
+            "ytick.minor.width": 0.5,
+            "ytick.labelsize": 7,
+            "ytick.direction": "out",
+            "lines.linewidth": 1.5,
+            "lines.markersize": 4,
+            "lines.markeredgewidth": 0.5,
+            "legend.fontsize": 7,
+            "legend.frameon": False,
+            "legend.loc": "best",
+            "savefig.dpi": 300,
+            "savefig.format": "pdf",
+            "savefig.bbox": "tight",
+            "savefig.pad_inches": 0.05,
+            "savefig.transparent": False,
+            "savefig.facecolor": "white",
+            "image.cmap": "viridis",
+            "image.aspect": "auto",
+            "axes.prop_cycle": plt.cycler(color=OKABE_ITO_LIST),
+        }
+
+        if style_name in {"nature", "science"}:
+            style.update(
+                {
+                    "font.size": 7,
+                    "axes.labelsize": 8,
+                    "axes.titlesize": 8,
+                    "xtick.labelsize": 6,
+                    "ytick.labelsize": 6,
+                    "legend.fontsize": 6,
+                    "savefig.dpi": 600,
+                }
+            )
+        elif style_name == "cell":
+            style.update({"savefig.dpi": 600})
+        elif style_name == "presentation":
+            style.update(
+                {
+                    "font.size": 14,
+                    "axes.labelsize": 16,
+                    "axes.titlesize": 18,
+                    "xtick.labelsize": 12,
+                    "ytick.labelsize": 12,
+                    "legend.fontsize": 12,
+                    "axes.linewidth": 1.5,
+                    "lines.linewidth": 2.5,
+                    "lines.markersize": 8,
+                }
+            )
+        elif style_name == "minimal":
+            style.update(
+                {
+                    "axes.linewidth": 0.8,
+                    "xtick.major.width": 0.8,
+                    "ytick.major.width": 0.8,
+                    "lines.linewidth": 2.0,
+                }
+            )
+
+        plt.rcParams.update(style)
+
+    def save_publication_figure(
+        fig: plt.Figure,
+        filename: str | Path,
+        formats: list[str] | tuple[str, ...] = ("pdf", "png"),
+        dpi: int = 300,
+        transparent: bool = False,
+        bbox_inches: str = "tight",
+        pad_inches: float = 0.1,
+        facecolor: str = "white",
+        **kwargs: object,
+    ) -> list[Path]:
+        target = Path(filename)
+        output_dir = target.parent if target.parent != Path("") else Path.cwd()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        saved_files: list[Path] = []
+        for fmt in formats:
+            output_file = output_dir / f"{target.stem}.{fmt}"
+            save_kwargs: dict[str, object] = {
+                "dpi": min(dpi, 300) if fmt in {"pdf", "eps", "svg"} else dpi,
+                "bbox_inches": bbox_inches,
+                "pad_inches": pad_inches,
+                "facecolor": facecolor if not transparent else "none",
+                "edgecolor": "none",
+                "transparent": transparent,
+                "format": fmt,
+            }
+            save_kwargs.update(kwargs)
+            fig.savefig(output_file, **save_kwargs)
+            saved_files.append(output_file)
+        return saved_files
 
 
 STATUS_COLORS = {
@@ -93,6 +259,7 @@ def main() -> None:
 
     cohort_totals = load_manifest_cohort_totals(manifest_path)
     package_df = prepare_package_df(package_df)
+    cohort_totals = resolve_cohort_totals(cohort_totals, package_df)
     file_df = prepare_file_df(file_df)
     file_df = file_df.loc[file_df["run_id"].isin(package_df["run_id"])].copy()
     run_metrics_df = load_run_metrics_df(batch_dir, package_df["run_id"].tolist())
@@ -187,6 +354,25 @@ def load_manifest_cohort_totals(manifest_path: Path) -> dict[str, int]:
     for cohort, count in counts.items():
         if cohort not in result:
             result[cohort] = count
+    return result
+
+
+def resolve_cohort_totals(cohort_totals: dict[str, int], package_df: pd.DataFrame) -> dict[str, int]:
+    if cohort_totals:
+        return cohort_totals
+    if package_df.empty or "cohort" not in package_df:
+        return {}
+
+    observed_counts = package_df["cohort"].astype(str).value_counts()
+    ordered = ["p0-33", "p0-66", "p0-100"]
+    result = {
+        cohort: int(observed_counts[cohort])
+        for cohort in ordered
+        if cohort in observed_counts.index
+    }
+    for cohort, count in observed_counts.items():
+        if cohort not in result:
+            result[str(cohort)] = int(count)
     return result
 
 
@@ -356,10 +542,23 @@ def load_ground_truth(labels_path: Path | None, manifest_path: Path) -> pd.DataF
 
 def load_rows(path: Path) -> list[dict[str, object]]:
     if path.suffix.lower() == ".jsonl":
-        return [json.loads(line) for line in path.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
+        text = read_text_with_fallbacks(path, encodings=("utf-8-sig", "utf-8", "gb18030", "cp936"))
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
     if path.suffix.lower() == ".csv":
         return pd.read_csv(path).to_dict(orient="records")
     raise ValueError(f"Unsupported label file format: {path}")
+
+
+def read_text_with_fallbacks(path: Path, encodings: tuple[str, ...]) -> str:
+    last_error: UnicodeDecodeError | None = None
+    for encoding in encodings:
+        try:
+            return path.read_text(encoding=encoding)
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    return path.read_text()
 
 
 def normalize_ground_truth_label(value: object) -> str | None:
@@ -683,7 +882,12 @@ def render_cohort_progress(
     package_df: pd.DataFrame,
     cohort_totals: dict[str, int],
 ) -> None:
+    del batch_meta
     ax.set_title("Cohort completion", loc="left", fontsize=10, fontweight="bold")
+    if not cohort_totals:
+        ax.text(0.5, 0.5, "No cohort metadata available", ha="center", va="center")
+        ax.set_axis_off()
+        return
     rows = []
     for cohort, total in cohort_totals.items():
         cohort_df = package_df.loc[package_df["cohort"] == cohort]
@@ -726,6 +930,10 @@ def render_package_verdicts(ax: plt.Axes, package_df: pd.DataFrame, cohort_total
     success_df = package_df.loc[package_df["status_norm"] == "success"].copy()
     if success_df.empty:
         ax.text(0.5, 0.5, "No successful package results yet", ha="center", va="center")
+        ax.set_axis_off()
+        return
+    if not cohort_totals:
+        ax.text(0.5, 0.5, "No cohort metadata available", ha="center", va="center")
         ax.set_axis_off()
         return
 
@@ -1093,14 +1301,80 @@ def render_token_distribution_panel(ax: plt.Axes, metrics_df: pd.DataFrame) -> N
         ax.text(0.5, 0.5, "No completed packages with token data", ha="center", va="center")
         ax.set_axis_off()
         return
-    box = ax.boxplot(data, patch_artist=True, tick_labels=cohorts, showfliers=False)
-    for patch, cohort in zip(box["boxes"], cohorts):
-        patch.set_facecolor(COHORT_COLORS.get(cohort, COHORT_COLORS["unknown"]))
-        patch.set_alpha(0.75)
+
+    plot_df = metrics_df.loc[metrics_df["cohort"].isin(cohorts), ["cohort", "total_tokens"]].copy()
+    strip_df_parts: list[pd.DataFrame] = []
+    clipped_counts: dict[str, int] = {}
+    upper_whiskers: dict[str, float] = {}
+    for cohort in cohorts:
+        cohort_df = plot_df.loc[plot_df["cohort"] == cohort].copy()
+        if cohort_df.empty:
+            continue
+        q1 = cohort_df["total_tokens"].quantile(0.25)
+        q3 = cohort_df["total_tokens"].quantile(0.75)
+        iqr = q3 - q1
+        upper_whisker = q3 + 1.5 * iqr
+        upper_whiskers[cohort] = float(upper_whisker)
+        clipped_counts[cohort] = int((cohort_df["total_tokens"] > upper_whisker).sum())
+        strip_df_parts.append(cohort_df.loc[cohort_df["total_tokens"] <= upper_whisker])
+    strip_df = pd.concat(strip_df_parts, ignore_index=True) if strip_df_parts else plot_df.iloc[0:0].copy()
+
+    sns.boxplot(
+        data=plot_df,
+        x="cohort",
+        y="total_tokens",
+        hue="cohort",
+        order=cohorts,
+        hue_order=cohorts,
+        palette={cohort: COHORT_COLORS.get(cohort, COHORT_COLORS["unknown"]) for cohort in cohorts},
+        dodge=False,
+        width=0.55,
+        fliersize=0,
+        linewidth=1,
+        ax=ax,
+    )
+    sns.stripplot(
+        data=strip_df,
+        x="cohort",
+        y="total_tokens",
+        hue="cohort",
+        order=cohorts,
+        hue_order=cohorts,
+        palette={cohort: COHORT_COLORS.get(cohort, COHORT_COLORS["unknown"]) for cohort in cohorts},
+        dodge=False,
+        alpha=0.24,
+        size=2.2,
+        jitter=0.18,
+        linewidth=0,
+        ax=ax,
+    )
+    if ax.legend_:
+        ax.legend_.remove()
     ax.set_ylabel("Total tokens per package")
-    for idx, cohort in enumerate(cohorts, start=1):
-        median_value = metrics_df.loc[metrics_df["cohort"] == cohort, "total_tokens"].median()
-        ax.text(idx, median_value, f"{int(median_value):,}", ha="center", va="bottom", fontsize=7)
+    y_max = max(upper_whiskers.values(), default=float(plot_df["total_tokens"].max()))
+    ax.set_ylim(0, y_max * 1.08 if y_max > 0 else 1)
+    for idx, cohort in enumerate(cohorts):
+        median_value = plot_df.loc[plot_df["cohort"] == cohort, "total_tokens"].median()
+        ax.text(
+            idx,
+            median_value,
+            f"{int(median_value):,}",
+            ha="center",
+            va="center",
+            fontsize=7,
+            color="#1A1A1A",
+        )
+    clipped_note = ", ".join(f"{cohort}: {clipped_counts.get(cohort, 0)}" for cohort in cohorts)
+    ax.text(
+        0.01,
+        0.98,
+        f"Hidden high outlier dots above whisker ({clipped_note})",
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=6,
+        color="#555555",
+    )
 
 
 def render_codeql_yield_panel(ax: plt.Axes, file_df: pd.DataFrame) -> None:

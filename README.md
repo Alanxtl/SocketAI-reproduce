@@ -6,7 +6,7 @@
 - Optionally use real `CodeQL` for static prescreening
 - Run three-stage LLM analysis on candidate files
 - Output a package-level maliciousness verdict
-- Preserve the prompt, raw response, parsed result, token usage, and latency for every step to support debugging and research statistics
+- Preserve the prompt, raw response, parsed result, token usage, and latency for every step to support debugging and analysis
 
 ## Project Structure
 
@@ -61,7 +61,48 @@ After installing dependencies, you can use:
 uv run .\main.py --help
 ```
 
-### 1. Single-Package Detection
+## Batch Evaluation
+
+SocketAI is training-free, so it can be evaluated directly on any package list without a train/test split. Use batch mode for dataset-level runs, then summarize `exports/package_level.csv` with your preferred analysis script.
+
+### 1. Prepare a batch manifest
+
+Create a JSONL manifest with one local package path per line:
+
+```json
+{"input": "C:/path/to/package-a.tgz"}
+{"input": "C:/path/to/package-b.tgz"}
+```
+
+The manifest can point to `.tgz`, `.tar`, `.zip`, or extracted package directories.
+
+### 2. Run SocketAI batch detection
+
+PowerShell:
+
+```powershell
+uv run .\main.py batch `
+  --manifest C:\path\to\manifest.jsonl `
+  --model gpt-4o-mini `
+  --output-dir .\result\batches `
+  --no-codeql
+```
+
+Use `--use-codeql` only after installing CodeQL and verifying `codeql --version`.
+
+### 3. Inspect batch outputs
+
+After a batch finishes, the most useful files are:
+
+```text
+result/batches/<batch_id>/batch_meta.json
+result/batches/<batch_id>/exports/package_level.csv
+result/batches/<batch_id>/exports/file_level.csv
+```
+
+`package_level.csv` is the package-level prediction table. Missing rows, `unknown`, and `error` verdicts should be handled explicitly when computing recall or accuracy.
+
+## Single-Package Detection
 
 Without CodeQL:
 
@@ -91,7 +132,7 @@ Common arguments:
 - `--use-codeql / --no-codeql`: Whether to enable CodeQL prescreening
 - `--codeql-bin`: Explicitly specify the CodeQL executable
 
-### 2. Batch Detection
+## Batch Detection Details
 
 Supports a `jsonl` or `csv` manifest with at least an `input` field.
 
@@ -121,6 +162,7 @@ Batch-level checkpoint files are updated after each completed sample. If the pro
 You can generate publication-style batch figures from an existing checkpoint:
 
 ```powershell
+uv sync
 uv run .\scripts\plot_batch_results.py `
   --batch-dir .\result\batches\<batch_id>
 ```
@@ -209,4 +251,4 @@ Coverage includes:
 
 - The LLM backend uses a LiteLLM-wrapped OpenAI-compatible API
 - Packages are not automatically downloaded from the npm registry by default; only local directories or archives are accepted
-- The CodeQL query set is a lightweight, extensible built-in version that supports iterative refinement toward the paper's experimental setup
+- The CodeQL query set is a lightweight, extensible built-in version intended for iterative refinement
